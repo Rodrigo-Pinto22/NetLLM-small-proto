@@ -61,3 +61,52 @@ def test_section_paths_are_independent_copies():
     sections = split("# A\nx\n## B\ny")
     sections[0].path.append("mutated")
     assert sections[1].path == ["A", "B"]
+
+
+def test_same_level_headings_without_parent_are_siblings():
+    # Regression: "##" headings with no "#" above used to nest under the first one.
+    sections = split("## ABSTRACT\na\n## CCS CONCEPTS\nb\n## KEYWORDS\nc")
+    assert [s.path for s in sections] == [["ABSTRACT"], ["CCS CONCEPTS"], ["KEYWORDS"]]
+
+
+def test_numbering_defines_hierarchy_when_markdown_levels_are_flat():
+    sections = split("## 4 NETLLM DESIGN\na\n## 4.1 Multimodal Encoder\nb\n## 4.2 Networking Head\nc\n"
+                     "## 5 EVALUATION\nd\n## 5.1 Setup\ne\n### 5.1.1 Hardware\nf")
+    assert [s.path for s in sections] == [
+        ["4 NETLLM DESIGN"],
+        ["4 NETLLM DESIGN", "4.1 Multimodal Encoder"],
+        ["4 NETLLM DESIGN", "4.2 Networking Head"],
+        ["5 EVALUATION"],
+        ["5 EVALUATION", "5.1 Setup"],
+        ["5 EVALUATION", "5.1 Setup", "5.1.1 Hardware"],
+    ]
+
+
+def test_netllm_paper_layout():
+    # Heading levels exactly as pymupdf4llm emits them for the NetLLM paper (title removed by Cleaner).
+    headings = ["## ABSTRACT", "#### ACM Reference Format:", "## 1 INTRODUCTION", "## 1.1 The Main Roadmap",
+                "## 6 DISCUSSION", "### **_Q2: How does_ NetLLM** **_compare to RAG?_**",
+                "## 7 CONCLUDING REMARKS", "## REFERENCES", "## A APPENDICES", "## A.1 Details of Figure 2"]
+    sections = split("\n".join(f"{h}\ntext" for h in headings))
+    assert [s.path for s in sections] == [
+        ["ABSTRACT"],
+        ["ABSTRACT", "ACM Reference Format:"],
+        ["1 INTRODUCTION"],
+        ["1 INTRODUCTION", "1.1 The Main Roadmap"],
+        ["6 DISCUSSION"],
+        ["6 DISCUSSION", "Q2: How does NetLLM compare to RAG?"],
+        ["7 CONCLUDING REMARKS"],
+        ["REFERENCES"],
+        ["A APPENDICES"],
+        ["A APPENDICES", "A.1 Details of Figure 2"],
+    ]
+
+
+def test_unnumbered_document_keeps_markdown_levels():
+    sections = split("# Guide\na\n## Install\nb\n### Linux\nc\n## Usage\nd")
+    assert [s.path for s in sections] == [["Guide"], ["Guide", "Install"], ["Guide", "Install", "Linux"], ["Guide", "Usage"]]
+
+
+def test_years_are_not_section_numbers():
+    sections = split("# Report\na\n## 2019 Results\nb")
+    assert [s.path for s in sections] == [["Report"], ["Report", "2019 Results"]]
