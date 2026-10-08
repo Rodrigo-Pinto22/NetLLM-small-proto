@@ -110,3 +110,48 @@ def test_unnumbered_document_keeps_markdown_levels():
 def test_years_are_not_section_numbers():
     sections = split("# Report\na\n## 2019 Results\nb")
     assert [s.path for s in sections] == [["Report"], ["Report", "2019 Results"]]
+
+
+def test_textbook_layout():
+    # Levels as pymupdf4llm emits them for Kurose & Ross: unnumbered chapter titles at "###",
+    # sections at "#####", subsections AND paragraph headings/sidebars both at "######".
+    headings = ["### Computer Networks and the Internet", "##### 1.1 What Is the Internet?",
+                "###### 1.1.3 What Is a Protocol?", "###### A Human Analogy",
+                "##### 4.6 Routing in the Internet", "###### 4.6.2 Intra-AS Routing: OSPF",
+                "###### SETTING OSPF LINK WEIGHTS", "###### 4.6.3 Inter-AS Routing: BGP",
+                "###### BGP Basics", "###### Path Attributes", "##### Leonard Kleinrock",
+                "### Application Layer", "##### 2.1 Principles"]
+    sections = split("\n".join(f"{h}\ntext" for h in headings))
+    ch1, ch2 = "Computer Networks and the Internet", "Application Layer"
+    assert [s.path for s in sections] == [
+        [ch1],
+        [ch1, "1.1 What Is the Internet?"],
+        [ch1, "1.1 What Is the Internet?", "1.1.3 What Is a Protocol?"],
+        [ch1, "1.1 What Is the Internet?", "1.1.3 What Is a Protocol?", "A Human Analogy"],
+        [ch1, "4.6 Routing in the Internet"],
+        [ch1, "4.6 Routing in the Internet", "4.6.2 Intra-AS Routing: OSPF"],
+        [ch1, "4.6 Routing in the Internet", "4.6.2 Intra-AS Routing: OSPF", "SETTING OSPF LINK WEIGHTS"],
+        [ch1, "4.6 Routing in the Internet", "4.6.3 Inter-AS Routing: BGP"],
+        [ch1, "4.6 Routing in the Internet", "4.6.3 Inter-AS Routing: BGP", "BGP Basics"],
+        [ch1, "4.6 Routing in the Internet", "4.6.3 Inter-AS Routing: BGP", "Path Attributes"],
+        [ch1, "Leonard Kleinrock"],
+        [ch2],
+        [ch2, "2.1 Principles"],
+    ]
+
+
+def test_titles_that_look_numbered_but_are_not():
+    # "A Human Analogy", "32 bits", "0.4 × ..." were mistaken for section numbers.
+    sections = split("## 1 Intro\na\n### A Human Analogy\nb\n### 32 bits\nc\n### 0.4 × (0.01 seconds)\nd")
+    assert [s.path for s in sections] == [
+        ["1 Intro"], ["1 Intro", "A Human Analogy"], ["1 Intro", "32 bits"], ["1 Intro", "0.4 × (0.01 seconds)"],
+    ]
+
+
+def test_figure_and_table_captions_are_body_text():
+    sections = split("## 4.6 Routing\nbefore\n###### Figure 4.36 • Routing table in router D\nafter")
+    assert sections == [Section(["4.6 Routing"], "before\n###### Figure 4.36 • Routing table in router D\nafter", 1)]
+
+
+def test_html_tags_removed_from_titles():
+    assert split("# CHAPTER <mark>7</mark>\ntext")[0].path == ["CHAPTER 7"]
