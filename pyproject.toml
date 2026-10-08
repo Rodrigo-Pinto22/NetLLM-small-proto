@@ -11,6 +11,7 @@ dependencies = [
     "numpy>=2.5.3",
     "pandas>=3.0.6",
     "pymupdf4llm>=1.28.2",
+    "rapidfuzz>=3.14.6",
     "torch>=2.14.1",
     "torchvision>=0.29.1",
     "transformers>=5.18.0",
@@ -27,4 +28,4 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["Ingestion_01", "Encoder_02"]
+packages = ["Ingestion_01", "Encoder_02", "Evaluation_04"]
