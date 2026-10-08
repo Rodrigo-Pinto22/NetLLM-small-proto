@@ -1,7 +1,7 @@
 [project]
 name = "netllm-small-proto"
 version = "0.1.0"
-description = "Add your description here"
+description = "Local RAG assistant for computer networking: answers questions from a textbook with cited passages, plus retrieval evaluation tooling."
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
