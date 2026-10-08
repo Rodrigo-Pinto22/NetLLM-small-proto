@@ -9,6 +9,7 @@ dependencies = [
     "datasets>=5.0.1",
     "gradio>=6.29.1",
     "numpy>=2.5.3",
+    "ollama>=0.6.3",
     "pandas>=3.0.6",
     "pymupdf4llm>=1.28.2",
     "rapidfuzz>=3.14.6",
