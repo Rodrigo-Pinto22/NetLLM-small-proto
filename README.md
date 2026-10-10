@@ -120,7 +120,7 @@ Files written next to `--out`:
 uv run python -m Evaluation_04.run --chunks data/book_chunks.jsonl --retrievers bm25 bge-small --calibrate
 ```
 
-Prints, for each retriever: Recall@1/5/10/20 and MRR@10 with 95 % bootstrap CIs, under two relevance
+Prints, for each retriever: Recall@1/5/10/20 and MRR@10 with 95 % bootstrap CIs (resampled by section), under two relevance
 definitions (**evidence**: the chunk contains the evidence sentence; **section**: the chunk comes from the
 labelled section), a breakdown per question type, and a paired significance test against the first
 retriever listed.
@@ -129,11 +129,29 @@ retriever listed.
 |---|---|---|
 | `--eval` | `data/eval_questions.jsonl` | question set |
 | `--chunks` | *(required)* | chunks of the **same** book the questions come from |
-| `--retrievers` | `bm25` | any of `bm25`, `bge-small`, `stub` (first = reference) |
+| `--retrievers` | `bm25` | any of `bm25`, `bge-small`, `bm25+rerank`, `bge-small+rerank`, `stub` (first = reference) |
 | `--mode` | `both` | `evidence`, `section` or `both` |
 | `--ks` / `--mrr-k` / `--primary-k` | `1 5 10 20` / `10` / `5` | cut-offs |
 | `--out` | `data/eval_results` | per-query results (`<retriever>.jsonl`) for error analysis |
 | `--calibrate` | off | also fit a **runtime confidence model** per retriever → `<retriever>.confidence.json` |
+| `--ci` | `section` | confidence intervals by resampling whole sections, or single questions |
+
+**Re-report without re-running** (seconds): every run saves per-question results; the tables and the
+confidence calibration can be recomputed from them, e.g. with other cut-offs or CI method:
+
+```bash
+uv run python -m Evaluation_04.report data/eval_results/bge-small.jsonl data/eval_results/bge-small+rerank.jsonl
+uv run python -m Evaluation_04.report data/eval_results --calibrate     # all results files in the folder
+```
+
+The first file is the reference for comparisons. Options: `--mode`, `--ks`, `--mrr-k`, `--primary-k`,
+`--ci section|question` (default `section`: questions about the same section are resampled together,
+since they succeed or fail together), `--calibrate`, `--out`.
+
+**Reranking:** the `+rerank` retrievers take the base retriever's top 50 candidates and re-order them
+with a cross-encoder (`BAAI/bge-reranker-base`, ~1.1 GB, downloaded on first use), which reads question
+and passage together. ~1 s per question on a 6 GB GPU (~30 min for 1,620 questions); settings in
+`RERANKER` / `RERANK_CANDIDATES` in `Evaluation_04/run.py`.
 
 The confidence model maps label-free signals of a search (how much the best result stands out) to the
 probability that a relevant passage is among the results; the app shows it as a 🟢/🟡/🔴 badge.
@@ -151,7 +169,7 @@ the retrieved passages are shown below it (cited ones highlighted), with the ret
 | Option | Default | |
 |---|---|---|
 | `--chunks` | `data/book_chunks.jsonl` | chunks to search |
-| `--retriever` | `bge-small` | `bge-small`, `bm25` or `stub` |
+| `--retriever` | `bge-small` | `bge-small`, `bm25`, `bge-small+rerank`, `bm25+rerank` or `stub` |
 | `--confidence` | | confidence JSON of the **same** retriever (from step 5) |
 | `--no-llm` | off | search only, no generated answer |
 | `--llm` / `--think` | `gpt-oss:20b` / `low` | Ollama model |
@@ -185,7 +203,8 @@ BERT, and a real Chroma database in a temporary folder).
 | `test_cleaner.py`, `test_splitter.py`, `test_chunker.py`, `test_parsers.py`, `test_ingestor.py` | ingestion pipeline (incl. the paper's and the textbook's heading layouts) |
 | `test_dataset_creation.py` | DatasetGen: evidence check, section selection, resume, dedup, retries, cache |
 | `test_encoder.py` | embedder (pooling, normalisation, query instruction), Chroma sync, retrievers |
-| `test_evaluation.py` | relevance, metrics, bootstrap, BM25, confidence calibration, CLI |
+| `test_reranker.py` | cross-encoder scoring (1/2 labels, truncation, batching), reranking wrapper |
+| `test_evaluation.py` | relevance, metrics, bootstrap (incl. by section), BM25, confidence calibration, run/report CLIs |
 | `test_generation.py` | prompt, citations, streaming answers, LLM errors |
 | `test_interface.py` | Gradio app wiring and rendering |
 
@@ -194,7 +213,7 @@ BERT, and a real Chroma database in a temporary folder).
 | Package | Content |
 |---|---|
 | `Ingestion_01/` | `parsers` (PDF/MD/TXT) · `cleaner` · `splitter` (heading paths) · `chunker` (token-based) · `ingestor` (CLI) |
-| `Encoder_02/` | `embedder` (HF bi-encoder) · `indexer` (Chroma sync, CLI) · `retriever` (`Retriever` contract, stub, bi-encoder) · `datasetCreation` (DatasetGen CLI) |
+| `Encoder_02/` | `embedder` (HF bi-encoder) · `indexer` (Chroma sync, CLI) · `retriever` (`Retriever` contract, stub, bi-encoder) · `reranker` (cross-encoder + `RerankingRetriever`) · `datasetCreation` (DatasetGen CLI) |
 | `Interface_03/` | `app` (Gradio) |
 | `Evaluation_04/` | `matching` · `dataset` · `metrics` · `baselines` (BM25) · `evaluate` · `confidence` · `run` (CLI + retriever registry) |
 | `Generation_05/` | `prompt` · `llm` (Ollama) · `answerer` (RAG) · `ask` (CLI) |

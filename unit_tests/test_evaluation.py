@@ -276,3 +276,80 @@ def test_ui_shows_calibrated_confidence_using_its_own_k():
     html, status = search("TCP Reno timeout congestion window", 1, "All documents")
     assert html.count('class="hit"') == 1             # shows k=1 ...
     assert "Retrieval confidence" in status and "in the top 3" in status  # ... but judges top 3
+
+
+# ----------------------------------------------------------------- cluster bootstrap + report
+
+def test_cluster_bootstrap_widens_ci_for_correlated_groups():
+    # 40 sections x 10 questions; within a section all questions succeed or fail together.
+    rng = random.Random(1)
+    values, groups = [], []
+    for g in range(40):
+        outcome = float(rng.random() < 0.6)
+        values += [outcome] * 10
+        groups += [f"s{g}"] * 10
+    _, qlo, qhi = bootstrap_ci(values)
+    _, slo, shi = bootstrap_ci(values, groups=groups)
+    assert (shi - slo) > 2 * (qhi - qlo)   # ~sqrt(10)x wider: only 40 independent outcomes
+
+
+def test_cluster_bootstrap_falls_back_with_one_group_and_validates_length():
+    v = [1, 0, 1, 1, 0, 1]
+    assert bootstrap_ci(v, groups=["same"] * 6) == bootstrap_ci(v)
+    with pytest.raises(ValueError):
+        bootstrap_ci(v, groups=["a"])
+    with pytest.raises(ValueError):
+        paired_bootstrap(v, v, groups=["a", "b"])
+
+
+def test_paired_bootstrap_by_group_still_detects_real_difference():
+    rng = random.Random(0)
+    groups = [f"s{i // 4}" for i in range(400)]
+    b = [float(rng.random() < 0.5) for _ in groups]
+    better = [1.0 if rng.random() < 0.3 else x for x in b]
+    assert paired_bootstrap(better, b, groups=groups)["p"] < 0.05
+
+
+def test_summaries_resample_by_section_by_default(results):
+    # Same questions duplicated within their sections: by-section CI must be wider.
+    many = [r for r in results for _ in range(10)]
+    by_q = summarize(many, "section", ["recall@1"], n_boot=500, by_section=False)["recall@1"]
+    by_s = summarize(many, "section", ["recall@1"], n_boot=500)["recall@1"]
+    assert by_q[0] == by_s[0]
+
+
+def test_write_and_load_results_roundtrip(results, tmp_path):
+    from Evaluation_04.evaluate import load_results, write_results
+
+    write_results(results, tmp_path / "r" / "bm25.jsonl")
+    assert load_results(tmp_path / "r" / "bm25.jsonl") == results
+
+
+def test_report_cli_from_saved_results(tmp_path, monkeypatch, capsys):
+    from Evaluation_04 import report, run
+    from Ingestion_01.ingestor import write_jsonl
+
+    write_jsonl(CHUNKS, tmp_path / "chunks.jsonl")
+    with open(tmp_path / "q.jsonl", "w") as f:
+        for it in ITEMS:
+            f.write(json.dumps(it.__dict__) + "\n")
+    monkeypatch.setattr("sys.argv", ["run", "--eval", str(tmp_path / "q.jsonl"), "--chunks", str(tmp_path / "chunks.jsonl"),
+                                     "--retrievers", "bm25", "stub", "--ks", "1", "3", "--out", str(tmp_path / "res")])
+    run.main()
+    capsys.readouterr()
+
+    monkeypatch.setattr("sys.argv", ["report", str(tmp_path / "res" / "stub.jsonl"), str(tmp_path / "res" / "bm25.jsonl"),
+                                     "--ks", "1", "3"])
+    report.main()
+    out = capsys.readouterr().out
+    assert "3 questions, retrievers: stub, bm25" in out
+    assert "95% CI by section, 3 sections" in out
+    assert "bm25 - stub (recall@5)" in out
+
+    monkeypatch.setattr("sys.argv", ["report", str(tmp_path / "res"), "--ks", "1", "3", "--ci", "question"])
+    report.main()
+    assert "95% CI by question" in capsys.readouterr().out
+
+    monkeypatch.setattr("sys.argv", ["report", str(tmp_path / "res")])   # default ks include 20 > depth 10
+    with pytest.raises(SystemExit, match="depth 10"):
+        report.main()
